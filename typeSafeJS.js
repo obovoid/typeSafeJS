@@ -78,8 +78,8 @@ const TYPE = {
     "OBJECT": "Object",
     "STRING": "String",
     "REGEXP": "RegExp",
-    "BOOL": "Boolean",
-    "ANY": "any"
+    "BOOLEAN": "Boolean",
+    "ANY": "Any"
 }
 
 class TypedLet {
@@ -87,9 +87,22 @@ class TypedLet {
     #value
     #type
     constructor(type, value) {
-        if (!TYPE[type.toUpperCase()]) throw new Error('Failed to construct TypedLet. Entered Type does not exist!');
-        if (type !== TYPE.getType(value)) throw new Error('Failed to construct TypedLet. Entered Type value does not match!')
-        this.#type = type
+        this.#type = TYPE[type.toUpperCase()]
+        if (!this.#type) throw new Error(`Failed to construct TypedLet. Entered Type {${type}} does not exist!`);
+        const valType = TYPE.getType(value)
+        if (this.#type !== valType && this.#type !== 'Any') {
+            const isAnyNumber = valType === 'Float' || valType === 'Integer'
+            if (isAnyNumber && this.#type !== 'Number') {
+                throw new Error(`Failed to construct TypedLet. Entered Type value {${valType}} does not match ${this.#type}!`);
+            }
+
+            const isPath = valType === 'Path'
+            if (isPath && typeof value !== 'string') {
+                throw new Error(`Failed to construct TypedLet. Entered Type value {${valType}} does not match ${this.#type}!`)
+            } else if (!isAnyNumber && !isPath) {
+                throw new Error(`Failed to construct TypedLet. Entered Type value {${valType}} does not match ${this.#type}!`)
+            }
+        }
         this.#value = value
     }
     
@@ -98,14 +111,55 @@ class TypedLet {
         return this.#value
     }
 
+    get type() {
+        return this.#type
+    }
+
     set value(val) {
         const type = TYPE.getType(val);
-        if (type !== this.#type) throw new Error('Failed to set TypedLet. Entered value does not match constructed type!');
+        if (this.#type !== 'Any') {
+            if (type !== this.#type) {
+                const isIntegerOrFloat = type === 'Float' || type === 'Integer'
+                const errSyntax = `Failed to set TypedLet. Entered value {type:${type}} does not match constructed type! {${this.#type}}`
+
+                if (this.#type === 'Number' && !isIntegerOrFloat) {
+                    throw new Error(errSyntax);   
+                }
+
+                if (this.#type === 'Integer') {
+                    throw new Error(errSyntax);   
+                }
+
+                if (this.#type === 'Path') {
+                    throw new Error(errSyntax);   
+                }
+                
+                if (this.#type === 'Function') {
+                    throw new Error(errSyntax);   
+                }
+
+                if (this.#type === 'Array') {
+                    throw new Error(errSyntax);
+                }
+
+                if (this.#type === 'Object') {
+                    throw new Error(errSyntax);
+                }
+
+                if (this.#type === 'String' && type !== 'Path') {
+                    throw new Error(errSyntax);
+                }
+                
+                if (this.#type === 'RegExp') {
+                    throw new Error(errSyntax);
+                }
+                
+                if (this.#type === 'Boolean') {
+                    throw new Error(errSyntax);
+                }
+            }
+        }
         this.#value = val
         return this.#value
     }
 }
-
-let test = new TypedLet(TYPE.FLOAT, float(1.0));
-console.log(test.value);
-console.log(test.value = 2.5);
