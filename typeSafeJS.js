@@ -1,10 +1,41 @@
+
+// Normally all Environments have process included, but in case not we load an empty object on it.
+if (!process) {
+    process = new Object();
+}
+
+if (!process.nextTick) {
+    process.nextTick = (cb) => {
+        if (typeof cb !== "function") throw new Error('Failed to setup nextTick. Expected Callback Function!');
+        setTimeout(() => {cb()}, 1)
+    }
+}
+
+process.nextTick(() => {
+    let _cache = []
+    process.locateTypedValue = (functionHashRef, key) => {
+        if (!_cache[functionHashRef] || !_cache[functionHashRef][key]) return '[Object TypedPromise]'
+        return _cache[functionHashRef][key]
+    }
+    process.cacheValue = (functionHashRef, key, value) => {
+        if (!_cache[functionHashRef]) {
+            _cache[functionHashRef] = []
+        }
+        _cache[functionHashRef][key] = value;
+    }
+});
+
+
+
 function matchElse(match, test, fallback) {
     return match === test || match === fallback || false
 }
 
-function float(input) {
+function _float(input) {
     return input.toFixed(1);
 }
+
+const $TSJS_CACHE = []
 
 const TYPE = {
     getType: (value) => {
@@ -80,6 +111,30 @@ const TYPE = {
     "REGEXP": "RegExp",
     "BOOLEAN": "Boolean",
     "ANY": "Any"
+}
+
+class FunctionIdentifier {
+    #hash
+    constructor() {
+        this.#hash = Date.now().toString(36) + Math.random().toString(36).substring(2, 12).padStart(12, 0);
+    }
+
+    get identifier() {
+        return this.#hash;
+    }
+}
+
+class Enum {
+    #data = {}
+    constructor(...Arguments) {
+        Arguments.forEach((arg, index) => {
+            this.#data[arg] = index
+        })
+    }
+
+    $(value) {
+        return this.#data[value]
+    }
 }
 
 class TypedLet {
@@ -163,3 +218,242 @@ class TypedLet {
         return this.#value
     }
 }
+
+const integer = {
+    isValid(input) {
+        return TYPE.getType(input) === 'Integer'
+    },
+    get() {
+        return "integer"
+    }
+}
+
+const float = {
+    isValid(input) {
+        return TYPE.getType(input) === 'Float'
+    },
+    get() {
+        return "float"
+    }
+}
+
+const path = {
+    isValid(input) {
+        return TYPE.getType(input) === 'Path'
+    },
+    get() {
+        return "path"
+    }
+}
+
+const func = {
+    isValid(input) {
+        return TYPE.getType(input) === 'Path'
+    },
+    get() {
+        return "func"
+    }
+}
+
+const array = {
+    isValid(input) {
+        return TYPE.getType(input) === 'Array'
+    },
+    get() {
+        return "array"
+    }
+}
+
+const object = {
+    isValid(input) {
+        return TYPE.getType(input) === 'Object'
+    },
+    get() {
+        return "object"
+    }
+}
+
+const string = {
+    isValid(input) {
+        return TYPE.getType(input) === 'String'
+    },
+    get() {
+        return "string"
+    }
+}
+
+const regexp = {
+    isValid(input) {
+        return TYPE.getType(input) === 'RegExp'
+    },
+    get() {
+        return "regexp"
+    }
+}
+
+const boolean = {
+    isValid(input) {
+        return TYPE.getType(input) === 'Boolean'
+    },
+    get() {
+        return "boolean"
+    }
+}
+
+const any = {
+    isValid(_input) {
+        return true
+    },
+    get() {
+        return "any"
+    }
+}
+
+class TypedFunction {
+    #caller
+    #typeList = new Array();
+    #id
+    #returnType
+    constructor(...Arguments) {
+        let hasReturnType = false;
+        this.#returnType = null;
+        let callback = null
+
+        const unique = new FunctionIdentifier();
+        this.#id = unique.identifier;
+
+        Arguments.forEach((regPam, index) => {
+            if (typeof regPam !== "function") {
+                let regString = String(regPam);
+                if (!regString.startsWith('/') || !regString.endsWith('/')) throw new Error(`Failed to create Typed Function! The Parameter Syntax was invalid. If you have difficulties then please read the documentation.`);
+                let regStringSliced = regString.slice(1).slice(0, -1);
+                
+                const [name, type] = regStringSliced.split('@')
+    
+                if (name === '->' && hasReturnType === true) throw new Error(`Failed to create Typed Function! It seems that you have two or more return Type defined while there can only be one return Type defined in a single function!`);
+                if (name === '->' && !hasReturnType) {
+                    hasReturnType = true;
+                    this.#returnType = type
+
+                    if (index !== Arguments.length -1 && typeof Arguments[index +1] !== "function") {
+                        console.warn(`It seems that you have defined a return type in a TypedFunction before submitting the last parameter. For better readability it is adviced to put the return type as the last parameter.`);
+                    }
+                }
+    
+                this.#typeList.push({name, type});
+            } else {
+                if (index !== Arguments.length -1) {
+                    throw new Error(`It seems that you have defined a callback function in a TypedFunction which must be the last parameter but isn't!`);
+                }
+
+                callback = regPam
+                this.#caller = this.#convert(callback)
+            }
+        });
+    }
+
+    #convert = (functionBody) => {
+        let stringBody = String(functionBody)
+        const lines = stringBody.split('\n');
+
+        lines.forEach((line, lineIndex) => {
+            let words = line.split(' ').filter(word => word !== '');
+            let wordIndex = 0
+
+            const initState = new Enum('NONE', 'EXPECT', 'ASSIGN');
+
+            let variableInitState = initState.$('NONE');
+            words.forEach((word, wordsIndex) => {
+                wordIndex = wordsIndex
+
+                switch (word) {
+                    case 'const':
+                    case 'let':
+                    case 'var':
+                        if (variableInitState === initState.$('NONE')) {
+                            variableInitState = initState.$('EXPECT');
+                        }
+                        break
+                    case '=':
+                        if (variableInitState === initState.$('EXPECT')) {
+                            variableInitState = initState.$('ASSIGN');
+                        }
+                        break
+                    default:
+                        if (variableInitState === initState.$('ASSIGN')) {
+                            if (!word.includes('>>')) {
+                                // throw error? Type not specified
+                            } else {
+                                let [value, type] = word.split(">>");
+                                
+                                try {
+                                    eval(value)
+                                } catch (e) {
+                                    if (e) {
+                                        const _l = line
+                                        const id = this.#id; const val = value
+                                        line = line.replace(`${value}>>${type}`, `process.locateTypedValue("${id}", "${val}")`);
+                                        stringBody = stringBody.replace(_l, line);
+                                    }
+                                }
+
+                                // Needs to be rewritten!
+                                // try {
+                                //     let funcType = eval(type);
+                                //     if (TYPE.getType(funcType) === "Object") {
+                                //         // Type detected 
+                                //         if (!funcType.isValid(value)) throw new Error(`transpiler Error: Type mismatch near ${lineIndex}:${wordIndex}. Expected Type ${type}!`)
+                                //     }
+                                // } catch (e) {
+                                //     console.error('Unhandled Exception Error. If this Error happens often and you believe it is an error caused by TypeSafeJS, then create an Issue on github with as much information as possible\n' + e);
+                                // }
+                            }
+                        }
+                        break
+                }
+            });
+            variableInitState = initState.$('NONE');
+        });
+
+        return eval(stringBody);
+    }
+
+    onCall = (callee) => {
+        this.#caller = this.#convert(callee)
+    }
+
+    call(...args) {
+        if ((this.#returnType !== null ? this.#typeList.length -1 : this.#typeList.length) > args.length) throw new Error(`Error calling Typed Function! Too few arguments! Expected ${this.#typeList.length} arguments but received: ${args.length}`);
+
+        this.#typeList.forEach((typeObject, index) => {
+            const name = typeObject.name
+            const type = typeObject.type
+            
+            if (name !== '->') { // return type
+                const argType = TYPE.getType(args[index]);
+                
+                if (type !== argType) throw new Error(`Error calling Typed Function! Expected ${type} for ${name} instead of ${argType}. Error in Call.`);
+
+                process.cacheValue(this.#id, name, args[index]);
+                
+            }
+        });
+        this.#caller(...args);
+    }
+}
+
+setTimeout(() => {
+    const Testname = new TypedFunction(/paramName@String/, /param2@Integer/, /param3@Integer/ , /->@String/, () => {
+        const str = paramName>>string
+        console.log(str);
+
+        let int = param2>>integer
+        console.log(int);
+
+        let int2 = param3>>integer
+        console.log(int2);
+
+        console.log(int * int2);
+    });
+    Testname.call("Hello World", 5, 2);
+}, 10);
