@@ -21,14 +21,36 @@ if (!process) {
 }
 /* #endregion */
 
-/* #region  Functions */
+/* #region  Helper Functions */
 function matchElse(match, test, fallback) {
     return match === test || match === fallback || false
 }
 
-function _float(input) {
-    return input.toFixed(1);
+function doesVariableExist(name) {
+    return global 
+        ? 
+            global.hasOwnProperty(name) 
+        :
+            window 
+        ? 
+            window.hasOwnProperty(name) 
+        : 
+            console.error(`You're enviroment does not match the current requirements to run typeSafeJS. If you think that this is an Issue, report it on github!`);
 }
+
+function IsKeyInTableOfArray(list, key) {
+    let _found = false
+    list.every(value => {
+        if (key === value.name) {
+            _found = true
+            return false
+        }
+        return true
+    });
+
+    return _found
+}
+
 /* #endregion */
 
 /* #region  Types */
@@ -137,7 +159,7 @@ const path = {
 
 const func = {
     isValid(input) {
-        return TYPE.getType(input) === 'Path'
+        return TYPE.getType(input) === 'Function'
     },
     get() {
         return "func"
@@ -389,16 +411,24 @@ class TypedFunction {
                             } else {
                                 let [value, type] = word.split(">>");
 
-                                try {
-                                    eval(value)
-                                } catch (e) {
-                                    if (e) {
+                                if (doesVariableExist(value)) {
+                                    // Do nothing
+                                } else {
+
+                                    if (IsKeyInTableOfArray(this.#typeList, value)) {
+                                        // Input is considered safe
                                         const _l = line
                                         const id = this.#id; const val = value
                                         line = line.replace(`${value}>>${type}`, `process.locateTypedValue("${id}", "${val}")`);
                                         stringBody = stringBody.replace(_l, line);
+                                    } else {
+                                        // This is temporary. Will be replaced with function testing if Input is safe!
+                                        const _l = line
+                                        const id = this.#id; const val = value
+                                        line = line.replace(`${value}>>${type}`, `"[Unsafe Type Rejection]"`);
+                                        stringBody = stringBody.replace(_l, line);
                                     }
-                                }
+                                } 
 
                                 // Needs to be rewritten!
                                 // try {
@@ -449,16 +479,22 @@ class TypedFunction {
 /* #region  Testing Codespace */
 setTimeout(() => {
     const Testname = new TypedFunction(/paramName@String/, /param2@Integer/, /param3@Integer/, /->@String/, () => {
-        const str = paramName >> string
-        console.log(str);
+        function loopFunction() {
+            while (true) {
+                // Malicious code, we try to prevent in testing.
+            }
+        }
+        // This WILL change. dependent of the type and if the code is safe to execute.
+        const str = loopFunction()>>string
+        console.log(str); // [Unsafe Type Rejection]
 
-        let int = param2 >> integer
-        console.log(int);
+        let int = param2>>integer
+        console.log(int); // 5
 
-        let int2 = param3 >> integer
-        console.log(int2);
+        let int2 = param3>>integer
+        console.log(int2); // 2
 
-        console.log(int * int2);
+        console.log(int * int2); // 10
     });
     Testname.call("Hello World", 5, 2);
 }, 1);
